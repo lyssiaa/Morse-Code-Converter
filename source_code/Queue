@@ -1,0 +1,148 @@
+--=============================================================================
+--ENGS 31/ CoSc 56 24X
+--Project: Morse
+--Queue developed by Alyssia Salas & Atziri Enriquez 
+--Created 08/18/2024
+---=============================================================================
+--Library Declarations:
+--=============================================================================
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+ENTITY CharQueue IS
+    PORT (
+        clk        : in STD_LOGIC;  -- 100 MHz clock signal
+        Data_in    : in STD_LOGIC_VECTOR(21 downto 0);  -- 8-bit input data
+        Data_in2    : in STD_LOGIC_VECTOR(4 downto 0);  -- 8-bit input data CHECK THIS
+        Push       : in STD_LOGIC;
+        Pop        : in STD_LOGIC;
+        Data_out   : out STD_LOGIC_VECTOR(21 downto 0); -- 8-bit output data
+        Data_out2   : out STD_LOGIC_VECTOR(4 downto 0); -- 8-bit output data
+        Empty      : out STD_LOGIC -- High when queue is done
+    );
+end CharQueue;
+
+architecture behavior of CharQueue is
+
+    -- Constants
+    constant QUEUE_SIZE : integer := 80;  -- Size of the queue (number of registers)
+
+    -- Signals for CharQueue
+    type regfile_type is array(0 to QUEUE_SIZE-1) of STD_LOGIC_VECTOR(21 downto 0);
+    signal regfile: regfile_type;  -- Register file to store input data
+    signal r_addr, w_addr: integer := 0;  -- Read and write addresses for the register file
+    signal write, read: STD_LOGIC := '0';  -- Control signals for writing and reading data
+    signal queue_empty: STD_LOGIC := '0';  -- Flags to indicate full and empty queue
+    
+    type regfile_type2 is array(0 to QUEUE_SIZE-1) of STD_LOGIC_VECTOR(4 downto 0);
+    signal regfile2: regfile_type2;  -- Register file to store input data
+
+    -- Signals for state machine
+    type stateType is (Empty_S, Inc_wr, Idle, Inc_rd, Full);
+    signal CS, NS: stateType := Empty_S;  -- Current state and next state of the state machine
+
+    -- Signal to manage data_ready being monopulsed
+    signal data_ready_d, data_ready_pulse: STD_LOGIC := '0';
+
+begin
+
+    -- State Transition
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            CS <= NS;
+        end if;
+    end process;
+    
+    -- Next State Logic: Determines the next state based on current state and inputs
+    nextStateLogic: process(CS, r_addr, w_addr, Push, Pop)
+    begin
+        NS <= CS;  -- Default: remain in the current state
+        case CS is
+            when Empty_S =>
+                if Push = '1' then
+                    NS <= Inc_wr;
+                end if;
+
+            when Inc_wr =>
+                if (w_addr + 1) /= r_addr then
+                    NS <= Idle;
+                elsif (w_addr +1) = r_addr then
+                    NS <= Full;
+                end if;
+
+            when Idle =>
+                if Pop = '1' then
+                    NS <= Inc_rd;
+                elsif Push = '1' then
+                    NS <= Inc_wr;
+                end if;
+
+            when Inc_rd =>
+                if (r_addr + 1) = w_addr then
+                    NS <= Empty_S;
+                elsif  (r_addr + 1) /= w_addr then
+                    NS <= Idle;
+                end if;
+
+            when Full =>
+                if Pop = '1' then
+                    NS <= Inc_rd;
+                end if;
+
+            when others =>
+               null;  -- Default state if undefined
+        end case;
+    end process;
+
+    -- Output Logic: Sets control signals based on the current state
+    outputLogic: process(CS)
+    begin
+        -- Default outputs
+        queue_empty <= '0';
+        write <= '0';
+        read <= '0';
+
+        case CS is
+            when Empty_S =>
+                queue_empty <= '1';
+
+            when Inc_wr =>
+                Write <= '1';
+
+            when Idle =>
+                -- Do nothing
+
+            when Full =>
+                -- Do nothing
+
+            when Inc_rd =>
+                read <= '1';
+
+            when others =>
+                -- Do nothing
+        end case;
+    end process;
+
+    -- Writing Data to the Queue
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if write = '1' then
+                regfile(w_addr) <= Data_in;
+                regfile2(w_addr) <= Data_in2;
+                w_addr  <= (w_addr + 1) mod QUEUE_SIZE;
+            end if;
+
+            if read = '1' then
+                Data_out <= regfile(r_addr);
+                Data_out2 <= regfile2(r_addr);
+                r_addr <= (r_addr + 1) mod QUEUE_SIZE;
+            end if;
+        end if;
+    end process;
+    
+   Empty <= queue_empty;
+
+end behavior;
